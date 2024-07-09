@@ -1,8 +1,12 @@
+# -*- coding:utf-8 -*-
+# @author: Young
+# @date: 2024-07-09 16:04:50
+
+import re
 import random
 import time
+import json
 from datetime import datetime
-from dateutil.relativedelta import relativedelta
-from dateutil.parser import parse
 import requests
 from bs4 import BeautifulSoup
 from collections import defaultdict
@@ -38,10 +42,8 @@ def eastmoney_guba_spider(code, time_frame):
         code = 'zssh000001'
     elif 'sh' in code:
         code = code.replace('sh', '')
-    
 
-    pre_date = None
-    time_split = [split for split in range(180, 6000, 30)]
+    time_split = [split for split in range(0, 6000, 30)]
     for start in time_split:
         results = defaultdict(list)
         for page in tqdm(range(start, start+30)):
@@ -59,23 +61,30 @@ def eastmoney_guba_spider(code, time_frame):
                     'Upgrade-Insecure-Requests': '1',
                     'Cache-Control': 'max-age=0',
                     'DNT': '1',
-                    # 'Cookie': 'your_cookie_here'  # 如果需要，可以添加Cookie
                 }
                 try:
                     res = requests.get(url, headers=headers, timeout=10).text
-                    # print(res)
+
                 except:
                     continue
                 bs = BeautifulSoup(res, 'html.parser')
-                titles = bs.find_all('div', class_='title')
-                date_time = bs.find_all('div', class_='update')
-                for title, date in zip(titles, date_time):
-                    if check_date(date.text, pre_date):
-                        pre_date = date.text
-                        results['context'].append(title.text)
-                        results['date_time'].append(date.text)          
+                for i, script in enumerate(bs.find('script', string=re.compile(r'var article_list'))):
+
+                    match = re.search(r'var article_list\s*=\s*(\{.*?\});', script.string, re.DOTALL)
+                    if match:
+                        article_list_json = match.group(1)
+
+                        article_list = json.loads(article_list_json)
                     else:
-                        continue    
+                        print(f"article_list not found in index {i} in {url}")
+                        continue
+
+                    for article in article_list['re']:
+                        try:
+                            results['context'].append(article['post_title'])
+                            results['date_time'].append(article['post_display_time'])
+                        except:
+                            continue 
             
             else:
                 break
@@ -84,7 +93,7 @@ def eastmoney_guba_spider(code, time_frame):
         print(datetime.now())
     
         df = pd.DataFrame(results)
-        df.to_csv(f"data/{code}_{len(df)}_{start}-{start+30}.csv", index=False)
+        df.to_csv(f"data/{code}_{len(df)}_{start}-{start+30}_version2.csv", index=False)
         print(datetime.now())
         print("全部存储完成。")
         del df
